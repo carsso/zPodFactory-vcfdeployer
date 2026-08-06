@@ -33,27 +33,42 @@ so nothing has to be duplicated in a config file:
 | Option | Source |
 |--------|--------|
 | `-n` | `zpod.name` |
-| `-j` | `zpod.profile` (see below) |
+| `-j` | `zpod.profile`, as an absolute path (see below) |
 | `-p` | `zpod.profile` — required by the deployer CLI, unused since the zPod already exists |
 | `-e` | `zpod.endpoint.name` |
 | `-u` | `zpodfactory_host` setting, port 8000 (override with `ZPODFACTORY_BASE_URL`) |
 | `-a` | API token of the zPod owner, falling back to a superadmin if that account is disabled |
 
 The VCF JSON template is derived from the **zPod profile name**, so a zPod deployed with
-the `v9.1.0.0_std_3hosts` profile uses `zpod-vcf-deployer/config/v9.1.0.0_std_3hosts.json`.
-Name your zPodFactory profiles after the deployer templates:
+the `v9.1.0.0_std_3hosts` profile uses `v9.1.0.0_std_3hosts.json`. It is looked up in two
+places, in order:
 
-| Template | zPod profile name to use |
+1. `config/` at the root of this config script — your **custom templates**
+2. `zpod-vcf-deployer/config/` — the templates the deployer ships
+
+so you can override a bundled template, or add one for a profile the deployer does not
+cover, without ever touching the submodule. Which file was picked is printed in the flow
+logs. Name your zPodFactory profiles after the templates:
+
+| Template shipped by the deployer | zPod profile name to use |
 |----------|--------------------------|
-| `config/v9.0.0.0_std_3hosts.json` | `v9.0.0.0_std_3hosts` |
-| `config/v9.0.1.0_std_3hosts.json` | `v9.0.1.0_std_3hosts` |
-| `config/v9.0.1.0_std_4hosts.json` | `v9.0.1.0_std_4hosts` |
-| `config/v9.0.2.0_std_3hosts.json` | `v9.0.2.0_std_3hosts` |
-| `config/v9.1.0.0_std_3hosts.json` | `v9.1.0.0_std_3hosts` |
-| `config/v9.1-latest_std_3hosts.json` | `v9.1-latest_std_3hosts` |
+| `v9.0.0.0_std_3hosts.json` | `v9.0.0.0_std_3hosts` |
+| `v9.0.1.0_std_3hosts.json` | `v9.0.1.0_std_3hosts` |
+| `v9.0.1.0_std_4hosts.json` | `v9.0.1.0_std_4hosts` |
+| `v9.0.2.0_std_3hosts.json` | `v9.0.2.0_std_3hosts` |
+| `v9.1.0.0_std_3hosts.json` | `v9.1.0.0_std_3hosts` |
+| `v9.1-latest_std_3hosts.json` | `v9.1-latest_std_3hosts` |
 
-If no template matches the zPod profile, the config script fails early with an explicit
-error rather than starting a doomed deployment.
+A custom template is just a copy you edit:
+
+```bash
+mkdir -p config
+cp zpod-vcf-deployer/config/v9.1.0.0_std_3hosts.json config/vcf-910-lab.json
+# ... edit, then create a zPodFactory profile named vcf-910-lab
+```
+
+If no template matches the zPod profile in either directory, the config script fails early
+with an explicit error rather than starting a doomed deployment.
 
 The zPod is flagged `ACTIVE` for the duration of the run: the deployer talks to the
 zPodFactory API and only creates a zPod when it is not `ACTIVE` yet, so without this it

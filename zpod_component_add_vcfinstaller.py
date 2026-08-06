@@ -13,6 +13,9 @@ from zpodengine.lib.commands import cmd_execute
 DEPLOYER_DIR = Path(__file__).resolve().parent / "zpod-vcf-deployer"
 DEPLOYER_SCRIPT = "zpod-vcf-deployer.py"
 
+# Custom VCF templates, taking precedence over the ones the deployer ships
+CUSTOM_CONFIG_DIR = Path(__file__).resolve().parent / "config"
+
 # Port the zPodFactory API listens on, used to build the base URL the deployer
 # connects back to. Set the ZPODFACTORY_BASE_URL environment variable when the
 # API lives somewhere else (a `.env` entry would not do: it is loaded by the
@@ -28,9 +31,10 @@ def execute_config_script(
     runs the whole VCF pipeline on it (DNS records, depot setup, bundle
     downloads, SDDC validation and SDDC deployment).
 
-    The VCF JSON template is picked from the deployer's `config/` directory
-    using the zPod profile name, so a zPod deployed with the
-    `v9.1.0.0_std_3hosts` profile uses `config/v9.1.0.0_std_3hosts.json`.
+    The VCF JSON template is picked by zPod profile name, so a zPod deployed
+    with the `v9.1.0.0_std_3hosts` profile uses `v9.1.0.0_std_3hosts.json`,
+    from our own `config/` directory when it holds one, from the deployer's
+    otherwise.
 
     Everything the deployer needs to talk back to zPodFactory (endpoint, API
     URL and access token) is read from this zPod and from the zPodFactory
@@ -44,17 +48,9 @@ def execute_config_script(
         zpod_component = session.get(M.ZpodComponent, zpod_component_id)
         zpod = zpod_component.zpod
 
-        vcf_json_template = f"config/{zpod.profile}.json"
-        if not (DEPLOYER_DIR / vcf_json_template).is_file():
-            raise ValueError(
-                f"No VCF template {vcf_json_template} in {DEPLOYER_DIR}."
-                " The zPod profile name must match one of the deployer"
-                " templates, see zpod-vcf-deployer/config/."
-            )
-
         deployer_options = {
             "-n": zpod.name,
-            "-j": vcf_json_template,
+            "-j": str(vcf_json_template(zpod.profile)),
             "-p": zpod.profile,
             "-e": zpod.endpoint.name,
             "-u": zpodfactory_base_url(),
@@ -83,6 +79,29 @@ def execute_config_script(
             cmd_execute(cmd).check_returncode()
         finally:
             set_zpod_status(session, zpod, zpod_status)
+
+
+def vcf_json_template(profile: str) -> Path:
+    """
+    Locate the VCF template for a zPod profile. A template dropped in our own
+    `config/` directory wins over the deployer's, so a profile can be tweaked,
+    or a new one added, without touching the submodule.
+    """
+    candidates = [
+        CUSTOM_CONFIG_DIR / f"{profile}.json",
+        DEPLOYER_DIR / "config" / f"{profile}.json",
+    ]
+    for candidate in candidates:
+        if candidate.is_file():
+            print(f"Using VCF template {candidate}")
+            return candidate
+
+    raise ValueError(
+        f"No VCF template for zPod profile {profile}, looked for"
+        f" {' and '.join(str(candidate) for candidate in candidates)}."
+        " The zPod profile name must match a custom template or one of the"
+        " deployer templates, see zpod-vcf-deployer/config/."
+    )
 
 
 def set_zpod_status(session, zpod, status) -> None:
