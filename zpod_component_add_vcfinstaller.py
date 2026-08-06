@@ -14,7 +14,9 @@ DEPLOYER_DIR = Path(__file__).resolve().parent / "zpod-vcf-deployer"
 DEPLOYER_SCRIPT = "zpod-vcf-deployer.py"
 
 # Port the zPodFactory API listens on, used to build the base URL the deployer
-# connects back to. Override with ZPODFACTORY_BASE_URL when it differs.
+# connects back to. Set the ZPODFACTORY_BASE_URL environment variable when the
+# API lives somewhere else (a `.env` entry would not do: it is loaded by the
+# deployer subprocess, way after we built the command line).
 ZPODAPI_PORT = 8000
 
 

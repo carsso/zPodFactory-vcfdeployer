@@ -79,12 +79,12 @@ git submodule update --init
 
 ### Configure the VCF depot
 
-The zPodFactory side needs no configuration, only the VCF depot does. Create your `.env`
-file from the example and fill it in:
+The zPodFactory side needs no configuration, only the VCF depot does. Start from the
+deployer's own example and fill in the depot section:
 
 ```bash
 cd zpodengine/src/zpodengine/config_scripts/vcfdeployer
-cp env_example.txt .env
+cp zpod-vcf-deployer/env_example.txt .env
 ```
 
 | Variable | Description |
@@ -92,12 +92,23 @@ cp env_example.txt .env
 | `VCF_DEPOT_MODE` | `online` or `offline` (VCF 9.1+ requires `offline`) |
 | `VCF_OFFLINE_DEPOT_HOSTNAME` / `_USERNAME` / `_PASSWORD` / `_PORT` | Offline depot, when `VCF_DEPOT_MODE=offline` |
 | `VCF_ONLINE_DEPOT_DOWNLOAD_TOKEN` | Broadcom download token, when `VCF_DEPOT_MODE=online` |
-| `ZPODFACTORY_BASE_URL` | Optional, only when the API is not at `http://<zpodfactory_host>:8000` |
 
-See
+The `ZPODFACTORY_*` and `VCF_JSON_TEMPLATE` entries of that example are dead weight here:
+the config script passes all of them on the command line, and a CLI option always wins
+over the matching environment variable. Leave them as they are, or strip them out.
+
+The `.env` goes at the config script root rather than inside the submodule, so that
+updating the deployer never touches it. python-dotenv walks up from the deployer script
+and finds it there. See
 [zpod-vcf-deployer](https://github.com/zPodFactory/zpod-vcf-deployer#environment-variables)
-for the details. These settings can also be passed as environment variables of the
+for the details of each setting. They can also be passed as environment variables of the
 zpodengine worker instead of a `.env` file.
+
+To point the deployer at a zPodFactory API that is not at
+`http://<zpodfactory_host setting>:8000`, set `ZPODFACTORY_BASE_URL` as a **real
+environment variable** of the zpodengine worker. Setting it in `.env` has no effect: the
+config script reads it to build the `-u` option it passes, and only the deployer
+subprocess loads `.env`.
 
 > [!NOTE]
 > The API token ends up in the deployer command line, which `cmd_execute` echoes to the
