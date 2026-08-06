@@ -23,8 +23,7 @@ uv run zpod-vcf-deployer.py \
   -p <zpod profile> \
   -e <endpoint name> \
   -u http://<zpodfactory_host setting>:8000 \
-  -a <api token> \
-  --debug
+  -a <api token>
 ```
 
 Everything on that command line is read from the zPod and from the zPodFactory database,
@@ -38,6 +37,9 @@ so nothing has to be duplicated in a config file:
 | `-e` | `zpod.endpoint.name` |
 | `-u` | `zpodfactory_host` setting, port 8000 (override with `ZPODFACTORY_BASE_URL`) |
 | `-a` | API token of the zPod owner, falling back to a superadmin if that account is disabled |
+
+Set `VCF_DEPLOYER_DEBUG=true` in the `.env` to append `--debug` and get the API payloads
+and responses in the flow logs. It is off by default, like in the deployer itself.
 
 The VCF JSON template is derived from the **zPod profile name**, so a zPod deployed with
 the `v9.1.0.0_std_3hosts` profile uses `v9.1.0.0_std_3hosts.json`. It is looked up in two
@@ -107,6 +109,7 @@ cp zpod-vcf-deployer/env_example.txt .env
 | `VCF_DEPOT_MODE` | `online` or `offline` (VCF 9.1+ requires `offline`) |
 | `VCF_OFFLINE_DEPOT_HOSTNAME` / `_USERNAME` / `_PASSWORD` / `_PORT` | Offline depot, when `VCF_DEPOT_MODE=offline` |
 | `VCF_ONLINE_DEPOT_DOWNLOAD_TOKEN` | Broadcom download token, when `VCF_DEPOT_MODE=online` |
+| `VCF_DEPLOYER_DEBUG` | Optional, `true` to run the deployer with `--debug`. Read by this config script, not by the deployer |
 
 The `ZPODFACTORY_*` and `VCF_JSON_TEMPLATE` entries of that example are dead weight here:
 the config script passes all of them on the command line, and a CLI option always wins

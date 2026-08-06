@@ -9,12 +9,19 @@ from zpodcommon.lib.dbutils import DBUtils
 from zpodengine.lib import database
 from zpodengine.lib.commands import cmd_execute
 
+CONFIG_SCRIPT_DIR = Path(__file__).resolve().parent
+
 # zpod-vcf-deployer git submodule, sitting next to this config script
-DEPLOYER_DIR = Path(__file__).resolve().parent / "zpod-vcf-deployer"
+DEPLOYER_DIR = CONFIG_SCRIPT_DIR / "zpod-vcf-deployer"
 DEPLOYER_SCRIPT = "zpod-vcf-deployer.py"
 
 # Custom VCF templates, taking precedence over the ones the deployer ships
-CUSTOM_CONFIG_DIR = Path(__file__).resolve().parent / "config"
+CUSTOM_CONFIG_DIR = CONFIG_SCRIPT_DIR / "config"
+
+# Runs the deployer with --debug (API payloads and responses in the flow logs).
+# The deployer has no environment variable for that flag, so unlike its own
+# settings this one is resolved here, from the environment or the `.env`.
+DEBUG_SETTING = "VCF_DEPLOYER_DEBUG"
 
 # Port the zPodFactory API listens on, used to build the base URL the deployer
 # connects back to. Set the ZPODFACTORY_BASE_URL environment variable when the
@@ -48,6 +55,7 @@ def execute_config_script(
         zpod_component = session.get(M.ZpodComponent, zpod_component_id)
         zpod = zpod_component.zpod
 
+        deployer_flags = ["--debug"] if deployer_debug() else []
         deployer_options = {
             "-n": zpod.name,
             "-j": str(vcf_json_template(zpod.profile)),
@@ -74,11 +82,43 @@ def execute_config_script(
                     f" {option} {shlex.quote(value)}"
                     for option, value in deployer_options.items()
                 )
-                + " --debug"
+                + "".join(f" {flag}" for flag in deployer_flags)
             )
             cmd_execute(cmd).check_returncode()
         finally:
             set_zpod_status(session, zpod, zpod_status)
+
+
+def deployer_debug() -> bool:
+    """
+    Whether to run the deployer with --debug, off unless asked for. The
+    environment wins over the `.env`, the way python-dotenv has it.
+    """
+    value = os.environ.get(DEBUG_SETTING) or dotenv_settings().get(DEBUG_SETTING, "")
+    # Tolerate what a hand written `.env` may hold around the value itself:
+    # surrounding quotes, and a trailing inline comment.
+    value = value.strip().strip("\"'").split("#")[0].strip()
+    return value.lower() in ("1", "true", "yes", "on")
+
+
+def dotenv_settings() -> dict[str, str]:
+    """
+    Read the `.env` the deployer will load. python-dotenv walks up from the
+    deployer script and stops on the first `.env` it finds, so look in the
+    submodule first, then next to this config script.
+    """
+    for env_file in (DEPLOYER_DIR / ".env", CONFIG_SCRIPT_DIR / ".env"):
+        if not env_file.is_file():
+            continue
+        settings = {}
+        for line in env_file.read_text().splitlines():
+            line = line.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            key, value = line.split("=", 1)
+            settings[key.strip()] = value
+        return settings
+    return {}
 
 
 def vcf_json_template(profile: str) -> Path:
