@@ -17,8 +17,27 @@ This config-script follows zPodFactory's config-scripts architecture as introduc
 and invokes:
 
 ```bash
-uv run zpod-vcf-deployer.py -n <zpod name> -j config/<zpod profile>.json --debug
+uv run zpod-vcf-deployer.py \
+  -n <zpod name> \
+  -j config/<zpod profile>.json \
+  -p <zpod profile> \
+  -e <endpoint name> \
+  -u http://<zpodfactory_host setting>:8000 \
+  -a <api token> \
+  --debug
 ```
+
+Everything on that command line is read from the zPod and from the zPodFactory database,
+so nothing has to be duplicated in a config file:
+
+| Option | Source |
+|--------|--------|
+| `-n` | `zpod.name` |
+| `-j` | `zpod.profile` (see below) |
+| `-p` | `zpod.profile` — required by the deployer CLI, unused since the zPod already exists |
+| `-e` | `zpod.endpoint.name` |
+| `-u` | `zpodfactory_host` setting, port 8000 (override with `ZPODFACTORY_BASE_URL`) |
+| `-a` | API token of the zPod owner, falling back to a superadmin if that account is disabled |
 
 The VCF JSON template is derived from the **zPod profile name**, so a zPod deployed with
 the `v9.1.0.0_std_3hosts` profile uses `zpod-vcf-deployer/config/v9.1.0.0_std_3hosts.json`.
@@ -58,9 +77,10 @@ If you cloned without `--recurse-submodules`, pull the deployer in with:
 git submodule update --init
 ```
 
-### Configure the deployer
+### Configure the VCF depot
 
-Create your `.env` file from the example and fill it in:
+The zPodFactory side needs no configuration, only the VCF depot does. Create your `.env`
+file from the example and fill it in:
 
 ```bash
 cd zpodengine/src/zpodengine/config_scripts/vcfdeployer
@@ -69,16 +89,21 @@ cp env_example.txt .env
 
 | Variable | Description |
 |----------|-------------|
-| `ZPODFACTORY_BASE_URL` | zPodFactory API URL (e.g. `http://zpodfactory.example.com:8000`) |
-| `ZPODFACTORY_ACCESS_TOKEN` | Your zPodFactory API access token |
-| `ZPODFACTORY_DEFAULT_ENDPOINT` | zPodFactory endpoint name |
-| `ZPODFACTORY_DEFAULT_PROFILE` | Required by the deployer CLI, unused here (the zPod already exists) |
 | `VCF_DEPOT_MODE` | `online` or `offline` (VCF 9.1+ requires `offline`) |
+| `VCF_OFFLINE_DEPOT_HOSTNAME` / `_USERNAME` / `_PASSWORD` / `_PORT` | Offline depot, when `VCF_DEPOT_MODE=offline` |
+| `VCF_ONLINE_DEPOT_DOWNLOAD_TOKEN` | Broadcom download token, when `VCF_DEPOT_MODE=online` |
+| `ZPODFACTORY_BASE_URL` | Optional, only when the API is not at `http://<zpodfactory_host>:8000` |
 
-Plus the depot credentials matching the chosen mode. See
+See
 [zpod-vcf-deployer](https://github.com/zPodFactory/zpod-vcf-deployer#environment-variables)
-for the full list. These settings can also be passed as environment variables of the
+for the details. These settings can also be passed as environment variables of the
 zpodengine worker instead of a `.env` file.
+
+> [!NOTE]
+> The API token ends up in the deployer command line, which `cmd_execute` echoes to the
+> Prefect flow logs. Anyone who can read those logs can read the token. Pass
+> `ZPODFACTORY_ACCESS_TOKEN` through the environment and drop the `-a` option from
+> `zpod_component_add_vcfinstaller.py` if that matters for your setup.
 
 ### Set as global default configuration
 

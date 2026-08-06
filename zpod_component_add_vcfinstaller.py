@@ -1,8 +1,11 @@
 import os
+import shlex
 from pathlib import Path
 
+from sqlmodel import select
 from zpodcommon import models as M
-from zpodcommon.enums import ZpodStatus
+from zpodcommon.enums import UserStatus, ZpodPermission, ZpodStatus
+from zpodcommon.lib.dbutils import DBUtils
 from zpodengine.lib import database
 from zpodengine.lib.commands import cmd_execute
 
@@ -10,15 +13,9 @@ from zpodengine.lib.commands import cmd_execute
 DEPLOYER_DIR = Path(__file__).resolve().parent / "zpod-vcf-deployer"
 DEPLOYER_SCRIPT = "zpod-vcf-deployer.py"
 
-# Settings the deployer needs but that the command line below does not carry.
-# They come from the environment, or from the `.env` file the deployer loads
-# itself through python-dotenv.
-REQUIRED_SETTINGS = (
-    "ZPODFACTORY_BASE_URL",
-    "ZPODFACTORY_ACCESS_TOKEN",
-    "ZPODFACTORY_DEFAULT_ENDPOINT",
-    "ZPODFACTORY_DEFAULT_PROFILE",
-)
+# Port the zPodFactory API listens on, used to build the base URL the deployer
+# connects back to. Override with ZPODFACTORY_BASE_URL when it differs.
+ZPODAPI_PORT = 8000
 
 
 def execute_config_script(
@@ -32,6 +29,10 @@ def execute_config_script(
     The VCF JSON template is picked from the deployer's `config/` directory
     using the zPod profile name, so a zPod deployed with the
     `v9.1.0.0_std_3hosts` profile uses `config/v9.1.0.0_std_3hosts.json`.
+
+    Everything the deployer needs to talk back to zPodFactory (endpoint, API
+    URL and access token) is read from this zPod and from the zPodFactory
+    settings, so only the VCF depot settings are left to configure.
 
     Args:
         zpod_component_id: The zPod component ID
@@ -49,7 +50,14 @@ def execute_config_script(
                 " templates, see zpod-vcf-deployer/config/."
             )
 
-        check_deployer_settings()
+        deployer_options = {
+            "-n": zpod.name,
+            "-j": vcf_json_template,
+            "-p": zpod.profile,
+            "-e": zpod.endpoint.name,
+            "-u": zpodfactory_base_url(),
+            "-a": zpodfactory_access_token(session, zpod),
+        }
 
         # The deployer looks the zPod up through the zPodFactory API and only
         # creates it when it is not ACTIVE yet. We run from the component add
@@ -62,11 +70,13 @@ def execute_config_script(
         set_zpod_status(session, zpod, ZpodStatus.ACTIVE)
         try:
             cmd = (
-                f"cd {DEPLOYER_DIR}"
+                f"cd {shlex.quote(str(DEPLOYER_DIR))}"
                 f" && uv run {DEPLOYER_SCRIPT}"
-                f" -n {zpod.name}"
-                f" -j {vcf_json_template}"
-                " --debug"
+                + "".join(
+                    f" {option} {shlex.quote(value)}"
+                    for option, value in deployer_options.items()
+                )
+                + " --debug"
             )
             cmd_execute(cmd).check_returncode()
         finally:
@@ -79,39 +89,54 @@ def set_zpod_status(session, zpod, status) -> None:
     session.commit()
 
 
-def check_deployer_settings() -> None:
+def zpodfactory_base_url() -> str:
     """
-    Fail before spawning the deployer when it has no way to know which
-    zPodFactory instance and which depot to talk to.
+    Build the zPodFactory API URL the deployer connects back to, from the
+    zpodfactory_host setting. Flow containers share the zpodcore compose
+    network, so that address is reachable from here.
     """
-    missing = [
-        setting
-        for setting in REQUIRED_SETTINGS
-        if setting not in os.environ and setting not in dotenv_settings()
-    ]
-    if missing:
+    if base_url := os.environ.get("ZPODFACTORY_BASE_URL"):
+        return base_url
+
+    zpodfactory_host = DBUtils.get_setting_value("zpodfactory_host")
+    if not zpodfactory_host:
         raise ValueError(
-            f"Missing zpod-vcf-deployer settings: {', '.join(missing)}."
-            f" Set them in the environment or in a .env file, see"
-            f" {Path(__file__).resolve().parent / 'env_example.txt'}."
+            "Empty zpodfactory_host setting, cannot build the zPodFactory API"
+            " URL for zpod-vcf-deployer. Set it, or set ZPODFACTORY_BASE_URL."
         )
+    return f"http://{zpodfactory_host}:{ZPODAPI_PORT}"
 
 
-def dotenv_settings() -> dict[str, str]:
+def zpodfactory_access_token(session, zpod) -> str:
     """
-    Read the `.env` file the deployer will load. python-dotenv walks up from
-    the deployer script and stops on the first `.env` it finds, so look for it
-    in the submodule first, then next to this config script.
+    Pick the token the deployer authenticates with. It acts on this zPod, so
+    use the zPod owner's token, and fall back to a superadmin when that
+    account is disabled: the API only accepts tokens of ENABLED users.
     """
-    for env_file in (DEPLOYER_DIR / ".env", Path(__file__).resolve().parent / ".env"):
-        if not env_file.is_file():
-            continue
-        settings = {}
-        for line in env_file.read_text().splitlines():
-            line = line.strip()
-            if not line or line.startswith("#") or "=" not in line:
-                continue
-            key, value = line.split("=", 1)
-            settings[key.strip()] = value.strip()
-        return settings
-    return {}
+    for user in [
+        user
+        for permission in zpod.permissions
+        if permission.permission == ZpodPermission.OWNER
+        for user in permission.users
+    ]:
+        if user.status == UserStatus.ENABLED and user.api_token:
+            return user.api_token
+
+    superadmin = session.exec(
+        select(M.User).where(
+            M.User.superadmin.is_(True),
+            M.User.status == UserStatus.ENABLED,
+            M.User.api_token != "",
+        )
+    ).first()
+    if superadmin:
+        print(
+            f"No usable owner for zPod {zpod.name}, falling back to superadmin"
+            f" {superadmin.username} to run zpod-vcf-deployer"
+        )
+        return superadmin.api_token
+
+    raise ValueError(
+        f"No enabled user with an API token to run zpod-vcf-deployer against"
+        f" zPod {zpod.name}."
+    )

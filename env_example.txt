@@ -1,18 +1,9 @@
 # zPodFactory vcfdeployer config-script environment
 # Rename this file to .env and update values as needed.
 #
-# The zPod name and the VCF JSON template are passed on the command line by the
-# config script (from the zPod name and the zPod profile), everything else the
-# deployer needs is read from here.
-
-# zPodFactory Configuration
-ZPODFACTORY_DEFAULT_ENDPOINT=your-endpoint-name
-ZPODFACTORY_ACCESS_TOKEN=your-access-token
-ZPODFACTORY_BASE_URL=http://zpodfactory.example.com:8000
-
-# Required by the deployer CLI, but unused here: the zPod already exists by the
-# time the config script runs, so the deployer never has to create it.
-ZPODFACTORY_DEFAULT_PROFILE=unused
+# The config script builds the deployer command line from the zPod itself: zPod
+# name, VCF JSON template (from the zPod profile), endpoint, API URL and access
+# token. Only the VCF depot settings are left to configure here.
 
 # VCF Depot Configuration
 # Choose between "online" or "offline"
@@ -29,3 +20,7 @@ VCF_OFFLINE_DEPOT_HOSTNAME=offlinedepot.corp.com
 VCF_OFFLINE_DEPOT_USERNAME=username
 VCF_OFFLINE_DEPOT_PASSWORD=password
 VCF_OFFLINE_DEPOT_PORT=443
+
+# Optional: only needed when the zPodFactory API is not reachable at
+# http://<zpodfactory_host setting>:8000 from the zpodengine flow containers.
+# ZPODFACTORY_BASE_URL=http://zpodfactory.example.com:8000
