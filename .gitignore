@@ -1,0 +1,7 @@
+__pycache__/
+.env
+
+# Debug logs (--debug-log) contain hostnames, IPs and plaintext passwords
+zpod-vcf-deployer-*.log
+*.log
+.ruff_cache/
