@@ -86,13 +86,12 @@ in `CONFIG_SCRIPTS` for that whole time.
 
 In the `zpodcore` directory, run:
 ```bash
-git clone --recurse-submodules https://github.com/carsso/zPodFactory-vcfdeployer.git zpodengine/src/zpodengine/config_scripts/vcfdeployer
+git clone https://github.com/carsso/zPodFactory-vcfdeployer.git zpodengine/src/zpodengine/config_scripts/vcfdeployer
+cd zpodengine/src/zpodengine/config_scripts/vcfdeployer
+git submodule update --init --remote
 ```
 
-If you cloned without `--recurse-submodules`, pull the deployer in with:
-```bash
-git submodule update --init
-```
+`--remote` checks out the deployer's latest `main` rather than the commit recorded here.
 
 ### Configure the VCF depot
 
@@ -147,9 +146,11 @@ just zcli setting create -n ff_default_config_scripts -v "vcfdeployer" -d ""
 
 ### Updating the deployer
 
-The deployer is pinned to a specific commit. To move to the latest version:
+The submodule tracks the deployer's `main` (`branch = main` in `.gitmodules`), and
+`ignore = all` keeps the moved submodule out of `git status`, so there is nothing to commit
+here when the deployer changes. To pull its latest `main`:
 
 ```bash
-git submodule update --remote zpod-vcf-deployer
-git commit -am "Bump zpod-vcf-deployer"
+git pull
+git submodule update --init --remote
 ```
