@@ -41,6 +41,9 @@ so nothing has to be duplicated in a config file:
 Set `VCF_DEPLOYER_DEBUG=true` in the `.env` to append `--debug` and get the API payloads
 and responses in the flow logs. It is off by default, like in the deployer itself.
 
+The deployer runs in its own Prefect task, failed after 12 hours by default. Set
+`VCF_DEPLOYER_TIMEOUT` (in seconds) in the `.env` to change that.
+
 The VCF JSON template is derived from the **zPod profile name**, so a zPod deployed with
 the `v9.1.0.0_std_3hosts` profile uses `v9.1.0.0_std_3hosts.json`. It is looked up in two
 places, in order:
@@ -109,6 +112,7 @@ cp zpod-vcf-deployer/env_example.txt .env
 | `VCF_OFFLINE_DEPOT_HOSTNAME` / `_USERNAME` / `_PASSWORD` / `_PORT` | Offline depot, when `VCF_DEPOT_MODE=offline` |
 | `VCF_ONLINE_DEPOT_DOWNLOAD_TOKEN` | Broadcom download token, when `VCF_DEPOT_MODE=online` |
 | `VCF_DEPLOYER_DEBUG` | Optional, `true` to run the deployer with `--debug`. Read by this config script, not by the deployer |
+| `VCF_DEPLOYER_TIMEOUT` | Optional, Prefect timeout of the deployer run in seconds (default 43200). Read by this config script |
 
 The `ZPODFACTORY_*` and `VCF_JSON_TEMPLATE` entries of that example are dead weight here:
 the config script passes all of them on the command line, and a CLI option always wins

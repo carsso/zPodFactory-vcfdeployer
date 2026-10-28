@@ -2,6 +2,7 @@ import os
 import shlex
 from pathlib import Path
 
+from prefect import task
 from sqlmodel import select
 from zpodcommon import models as M
 from zpodcommon.enums import UserStatus, ZpodPermission, ZpodStatus
@@ -22,6 +23,11 @@ CUSTOM_CONFIG_DIR = CONFIG_SCRIPT_DIR / "config"
 # The deployer has no environment variable for that flag, so unlike its own
 # settings this one is resolved here, from the environment or the `.env`.
 DEBUG_SETTING = "VCF_DEPLOYER_DEBUG"
+
+# Prefect timeout of the deployer run, in seconds, resolved the same way.
+# Bundle downloads plus the SDDC deployment take hours, hence the generous default.
+TIMEOUT_SETTING = "VCF_DEPLOYER_TIMEOUT"
+DEFAULT_TIMEOUT = 12 * 3600
 
 # Port the zPodFactory API listens on, used to build the base URL the deployer
 # connects back to. Set the ZPODFACTORY_BASE_URL environment variable when the
@@ -84,21 +90,38 @@ def execute_config_script(
                 )
                 + "".join(f" {flag}" for flag in deployer_flags)
             )
-            cmd_execute(cmd).check_returncode()
+            run_deployer.with_options(timeout_seconds=deployer_timeout())(cmd)
         finally:
             set_zpod_status(session, zpod, zpod_status)
 
 
+@task(task_run_name="zpod-vcf-deployer")
+def run_deployer(cmd: str) -> None:
+    # Off the main thread, Prefect only raises the timeout between blocking
+    # calls: here on the next deployer output line, after which the closed
+    # pipes make the deployer die on its next write.
+    cmd_execute(cmd).check_returncode()
+
+
 def deployer_debug() -> bool:
+    """Whether to run the deployer with --debug, off unless asked for."""
+    return setting(DEBUG_SETTING).lower() in ("1", "true", "yes", "on")
+
+
+def deployer_timeout() -> int:
+    value = setting(TIMEOUT_SETTING)
+    return int(value) if value else DEFAULT_TIMEOUT
+
+
+def setting(name: str) -> str:
     """
-    Whether to run the deployer with --debug, off unless asked for. The
-    environment wins over the `.env`, the way python-dotenv has it.
+    Read one of our settings. The environment wins over the `.env`, the way
+    python-dotenv has it.
     """
-    value = os.environ.get(DEBUG_SETTING) or dotenv_settings().get(DEBUG_SETTING, "")
+    value = os.environ.get(name) or dotenv_settings().get(name, "")
     # Tolerate what a hand written `.env` may hold around the value itself:
     # surrounding quotes, and a trailing inline comment.
-    value = value.strip().strip("\"'").split("#")[0].strip()
-    return value.lower() in ("1", "true", "yes", "on")
+    return value.strip().strip("\"'").split("#")[0].strip()
 
 
 def dotenv_settings() -> dict[str, str]:
