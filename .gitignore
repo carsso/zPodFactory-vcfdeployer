@@ -5,3 +5,7 @@ __pycache__/
 zpod-vcf-deployer-*.log
 *.log
 .ruff_cache/
+
+# uv installed by the config script when the flow image lacks it
+.uv/
+.uv-*/

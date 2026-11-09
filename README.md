@@ -44,6 +44,12 @@ and responses in the flow logs. It is off by default, like in the deployer itsel
 The deployer runs in its own Prefect task, failed after 12 hours by default. Set
 `VCF_DEPLOYER_TIMEOUT` (in seconds) in the `.env` to change that.
 
+The zpodengine flow image no longer ships `uv` (since zpodcore `9027ca3`), so the config
+script installs it with pip the first time it runs, under `.uv/` at the root of this
+directory, and keeps the uv cache there too. Flow containers are throwaway but this
+directory is bind mounted from the host, so both survive from one run to the next. The
+install, like `uv run` itself, needs the flow containers to reach PyPI.
+
 The VCF JSON template is derived from the **zPod profile name**, so a zPod deployed with
 the `v9.1.0.0_std_3hosts` profile uses `v9.1.0.0_std_3hosts.json`. It is looked up in two
 places, in order:
