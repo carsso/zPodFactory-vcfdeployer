@@ -1,5 +1,8 @@
 import os
 import shlex
+import shutil
+import sys
+import tempfile
 from pathlib import Path
 
 from prefect import task
@@ -15,6 +18,10 @@ CONFIG_SCRIPT_DIR = Path(__file__).resolve().parent
 # zpod-vcf-deployer git submodule, sitting next to this config script
 DEPLOYER_DIR = CONFIG_SCRIPT_DIR / "zpod-vcf-deployer"
 DEPLOYER_SCRIPT = "zpod-vcf-deployer.py"
+
+# Bind mounted from the host, so it outlives the throwaway flow containers.
+UV_DIR = CONFIG_SCRIPT_DIR / ".uv"
+UV_CACHE_DIR = UV_DIR / "cache"
 
 # Custom VCF templates, taking precedence over the ones the deployer ships
 CUSTOM_CONFIG_DIR = CONFIG_SCRIPT_DIR / "config"
@@ -83,7 +90,8 @@ def execute_config_script(
         try:
             cmd = (
                 f"cd {shlex.quote(str(DEPLOYER_DIR))}"
-                f" && uv run {DEPLOYER_SCRIPT}"
+                f" && UV_CACHE_DIR={shlex.quote(str(UV_CACHE_DIR))}"
+                f" {shlex.quote(uv_binary())} run {DEPLOYER_SCRIPT}"
                 + "".join(
                     f" {option} {shlex.quote(value)}"
                     for option, value in deployer_options.items()
@@ -101,6 +109,35 @@ def run_deployer(cmd: str) -> None:
     # calls: here on the next deployer output line, after which the closed
     # pipes make the deployer die on its next write.
     cmd_execute(cmd).check_returncode()
+
+
+def uv_binary() -> str:
+    """Locate uv, installing it under UV_DIR once if the flow image lacks it."""
+    if uv := shutil.which("uv"):
+        return uv
+
+    uv = UV_DIR / "bin" / "uv"
+    if os.access(uv, os.X_OK):
+        return str(uv)
+
+    print(f"uv not found in the flow image, installing it under {UV_DIR}")
+    # /opt/venv has no pip: use the system interpreter it was created from.
+    python = Path(sys.base_prefix) / "bin" / "python3"
+    target = tempfile.mkdtemp(dir=CONFIG_SCRIPT_DIR, prefix=".uv-")
+    try:
+        cmd_execute(
+            f"{python} -m pip install --quiet --disable-pip-version-check"
+            f" --root-user-action=ignore --target {shlex.quote(target)} uv"
+        )
+        # Atomic: concurrent flows see either the complete install or none.
+        os.rename(target, UV_DIR)
+    except OSError:
+        # Another flow may have installed it meanwhile.
+        if not os.access(uv, os.X_OK):
+            raise
+    finally:
+        shutil.rmtree(target, ignore_errors=True)
+    return str(uv)
 
 
 def deployer_debug() -> bool:
